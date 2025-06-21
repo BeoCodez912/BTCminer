@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bitcoin Miner + Wallet + Offer Wall</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bitcoinjs-lib@6.1.0/dist/bitcoinjs-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.9/minified/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <style>
+    body {
+      font-family: monospace;
+      background: #111;
+      color: #0f0;
+      padding: 20px;
+      text-align: center;
+    }
+    input, button {
+      width: 90%;
+      max-width: 500px;
+      padding: 10px;
+      margin: 5px;
+      background: black;
+      color: lime;
+      border: 1px solid lime;
+      border-radius: 5px;
+    }
+    #log, #buttonLog {
+      height: 300px;
+      overflow-y: auto;
+      background: #000;
+      border: 1px solid #0f0;
+      padding: 10px;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+    .log-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px dashed #0f0;
+      padding: 5px 0;
+    }
+    .log-entry span { flex: 1; }
+    .copy-btn {
+      margin-left: 10px;
+      background: transparent;
+      border: 1px solid #0f0;
+      color: #0f0;
+      padding: 3px 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    #qrcode, #reader {
+      margin-top: 20px;
+    }
+    #appUrl0, #appUrl1 {
+      margin: 10px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Bitcoin Miner + Wallet + Offer Wall</h2>
+
+  <button id="startMiningBtn">Start Mining</button>
+  <button id="logRefBtn">Log Ref</button>
+  <button id="logAppBtn">Log App URL</button>
+
+  <button id="claim0Btn">Claim[0] - Free Power</button>
+  <button id="claim1Btn">Claim[1] - Miner Power</button>
+  <button id="claim2Btn">Claim[2] - Offer Reward</button>
+  <button id="claim3Btn">Claim[3] - Daily Bonus</button>
+
+  <button id="fetchBalancesBtn">Fetch App URL Balances</button>
+  <button id="logReferralBtn">Log Referral to Backend</button>
+
+  <button id="logAllRefsBtn">Log All Refs</button>
+  <button id="resetLogsBtn">Reset Logs</button>
+
+  <button id="logAppRef0Btn">Log_App_url[Ref0]</button>
+  <button id="logAppRef1Btn">Log_App_url[Ref1]</button>
+
+  <button id="generateQrBtn">Generate QR</button>
+  <button id="downloadQrBtn">Download QR</button>
+  <button id="scanQrBtn">Scan QR</button>
+
+  <div id="appUrl0"></div>
+  <div id="appUrl1"></div>
+  <div id="qrcode"></div>
+  <div id="reader" style="width: 300px; margin: auto;"></div>
+  <h3 id="timer">⏳ Timer: 86400</h3>
+  <h3 id="offerWallTimer">🛒 Offer Wall: 43200</h3>
+  <div id="log"></div>
+  <div id="buttonLog">Button Logs:</div>
+<script>
+  window.addEventListener("DOMContentLoaded", () => {
+    const backend = "https://btcminer-mm0i.onrender.com";
+    const Ref = ["5ND8V", "AJXXLC"];
+    const claimState = { 0: {}, 1: {}, 2: {}, 3: {} };
+    let miningCount = parseInt(localStorage.getItem("mining") || "0");
+    const logArea = document.getElementById("log");
+    const buttonLog = document.getElementById("buttonLog");
+    const appUrl0Div = document.getElementById("appUrl0");
+    const appUrl1Div = document.getElementById("appUrl1");
+    const timerDisplay = document.getElementById("timer");
+    const offerWallDisplay = document.getElementById("offerWallTimer");
+    const qrCodeDiv = document.getElementById("qrcode");
+
+    function timestamp() {
+      return new Date().toLocaleTimeString();
+    }
+
+    function createLogEntry(entryText) {
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      const span = document.createElement("span");
+      span.textContent = entryText;
+      const button = document.createElement("button");
+      button.className = "copy-btn";
+      button.textContent = "Copy";
+      button.onclick = () => navigator.clipboard.writeText(entryText);
+      entry.appendChild(span);
+      entry.appendChild(button);
+      return entry;
+    }
+
+    function log(msg) {
+      const entry = `[${timestamp()}] ${msg}`;
+      logArea.appendChild(createLogEntry(entry));
+      if (logArea.childElementCount > 200) logArea.removeChild(logArea.firstChild);
+      console.log(entry);
+    }
+
+    function logButton(msg) {
+      const entry = `[${timestamp()}] ${msg}`;
+      buttonLog.appendChild(createLogEntry(entry));
+      if (buttonLog.childElementCount > 100) buttonLog.removeChild(buttonLog.firstChild);
+      console.log(entry);
+    }
+
+    function updateAppUrl(index, refCode) {
+      const url = `https://play.google.com/store/apps/details?id=bitcoin.minning.com&referrer=${refCode}`;
+      const targetDiv = index === 0 ? appUrl0Div : appUrl1Div;
+      targetDiv.innerHTML = `<a href="${url}" target="_blank" style="color:lime;">App URL [Ref${index}] → ${refCode}</a>`;
+      log(`App URL [Ref${index}]: ${url}`);
+    }
+
+    function MiningLogger() {
+      let Duration1 = 86400;
+      let Duration2 = 43200;
+      const interval = 0.20;
+      const BTC = [
+        0.000000000382,
+        () => 14.70 * Duration1 * Duration2 / interval / 0.000000000382,
+        () => ((3.5 * 1000 + 5.60 * 1000) * Duration1 * Duration2 / interval * BTC[1]()) / 0.000000000382,
+        () => ((200000 + 410000 + 750000) * Duration1 * Duration2 / interval * BTC[1]() * BTC[2]()) / 0.000000000382,
+        
+BTC[1] * BTC[2] / interval / BTC[0]
+      ];
+
+      return {
+        startTimer: () => {
+          const timer = setInterval(() => {
+            Duration1--;
+            if (Duration1 <= 0) clearInterval(timer);
+            timerDisplay.innerText = "⏳ Timer: " + Duration1;
+          }, 1000);
+          log("⏳ Timer started: 86400 seconds");
+        },
+        showOfferWall: () => {
+          const offerTimer = setInterval(() => {
+            Duration2--;
+            if (Duration2 <= 0) clearInterval(offerTimer);
+            offerWallDisplay.innerText = "🛒 Offer Wall: " + Duration2;
+          }, 1000);
+          log("🛒 Offer Wall activated");
+        },
+        computeStats: () => {
+          log("Miner Power: " + BTC[1]().toFixed(12) + " H");
+          log("Free Computing Power: " + BTC[2]().toFixed(12) + " Mh/s");
+          log("More Computing Power: " + BTC[3]().toFixed(12) + " Mh/s");
+        }
+      };
+    }
+
+    function claimReward(index) {
+      const now = Date.now();
+      const claim = claimState[index];
+      if (claim.count >= 35) return log(`⚠️ Claim[${index}] limit reached.`);
+      if (now - claim.last < 14000 * 1000) return log(`⏳ Wait before next Claim[${index}].`);
+      claim.count++;
+      claim.last = now;
+      localStorage.setItem(`claim${index}`, JSON.stringify(claim));
+      log(`🎁 Claimed reward from Claim[${index}] (${claim.count}/35)`);
+    }
+
+    function restoreClaims() {
+      for (let i = 0; i < 4; i++) {
+        const stored = localStorage.getItem(`claim${i}`);
+        claimState[i] = stored ? JSON.parse(stored) : { count: 0, last: 0 };
+      }
+    }
+
+    function showQRReferral() {
+      qrCodeDiv.innerHTML = '';
+      new QRCode(qrCodeDiv, {
+        text: `https://play.google.com/store/apps/details?id=bitcoin.minning.com&referrer=${Ref[0]}`,
+        width: 256,
+        height: 256,
+        colorDark: "#0f0",
+        colorLight: "#111",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+      log("Referral QR Generated.");
+    }
+
+    function downloadQR() {
+      const canvas = qrCodeDiv.querySelector("canvas");
+      if (!canvas) return;
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL();
+      link.download = "referral-qr.png";
+      link.click();
+    }
+
+    function scanReferral() {
+      const reader = new Html5Qrcode("reader");
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices.length) {
+          reader.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: 250 },
+            qrMsg => {
+              log("Scanned Referral: " + qrMsg);
+              localStorage.setItem("referral", qrMsg);
+              reader.stop();
+              reader.clear();
+              document.getElementById("reader").innerHTML = '';
+            },
+            err => log("QR Scanner error: " + err)
+          );
+        }
+      }).catch(err => log("Camera error: " + err));
+    }
+const logger = MiningLogger();
+    restoreClaims();
+
+    document.getElementById("startMiningBtn").onclick = () => {
+      logButton("Start Mining clicked");
+      logger.startTimer();
+      logger.showOfferWall();
+    };
+
+    document.getElementById("logRefBtn").onclick = () => {
+      logButton("Log Ref clicked");
+      Ref.forEach(r => log("Ref: " + r));
+    };
+
+    document.getElementById("logAppBtn").onclick = () => {
+      logButton("Log App URL clicked");
+      Ref.forEach((ref, i) => {
+        const url = `https://play.google.com/store/apps/details?id=bitcoin.minning.com&referrer=${ref}`;
+        const htmlLink = `<a href='${url}' target='_blank' style='color:lime;'>App URL [Ref${i}] → ${ref}</a>`;
+        const div = document.createElement("div");
+        div.innerHTML = htmlLink;
+        logArea.appendChild(div);
+        log(`App URL [Ref${i}]: ${url}`);
+      });
+    };
+
+    document.getElementById("claim0Btn").onclick = () => {
+      logButton("Claim[0] clicked");
+      claimReward(0);
+    };
+    document.getElementById("claim1Btn").onclick = () => {
+      logButton("Claim[1] clicked");
+      claimReward(1);
+    };
+    document.getElementById("claim2Btn").onclick = () => {
+      logButton("Claim[2] clicked");
+      claimReward(2);
+    };
+    document.getElementById("claim3Btn").onclick = () => {
+      logButton("Claim[3] clicked");
+      claimReward(3);
+      logger.computeStats();
+    };
+
+    document.getElementById("generateQrBtn").onclick = () => {
+      logButton("Generate QR clicked");
+      showQRReferral();
+    };
+    document.getElementById("downloadQrBtn").onclick = () => {
+      logButton("Download QR clicked");
+      downloadQR();
+    };
+    document.getElementById("scanQrBtn").onclick = () => {
+      logButton("Scan QR clicked");
+      scanReferral();
+    };
+
+    document.getElementById("resetLogsBtn").onclick = () => {
+      logArea.innerHTML = '';
+      buttonLog.innerHTML = '';
+      localStorage.clear();
+      log("Logs and localStorage cleared.");
+    };
+
+    document.getElementById("logAllRefsBtn").onclick = () => {
+      Ref.forEach(r => log("Referral Code: " + r));
+    };
+
+    document.getElementById("logAppRef0Btn").onclick = () => {
+      logButton("Log_App_url[Ref0] clicked");
+      updateAppUrl(0, Ref[0]);
+    };
+
+    document.getElementById("logAppRef1Btn").onclick = () => {
+      logButton("Log_App_url[Ref1] clicked");
+      updateAppUrl(1, Ref[1]);
+    };
+
+    document.getElementById("fetchBalancesBtn").onclick = async () => {
+      logButton("Fetch Balances clicked");
+      for (let i = 0; i < Ref.length; i++) {
+        const ref = Ref[i];
+        try {
+          const res = await fetch(`${backend}/balance?ref=${ref}`);
+          const data = await res.json();
+          log(`🔍 Ref${i} (${ref}) Balance: ${data.balance} BTC`);
+        } catch (err) {
+          log(`❌ Failed to fetch balance for Ref${i}: ${err.message}`);
+        }
+      }
+    };
+
+    document.getElementById("logReferralBtn").onclick = async () => {
+      const ref = prompt("Enter referral code:");
+      const amount = parseFloat(prompt("Enter amount to log:"));
+      if (!ref || isNaN(amount)) {
+        return log("⚠️ Invalid input.");
+      }
+
+      try {
+        const res = await fetch(`${backend}/log-referral`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ref, amount })
+        });
+        const data = await res.json();
+        if (data.success) {
+          log(`✅ Logged ${amount} BTC to ${ref}`);
+        }
+      } catch (err) {
+        log(`❌ Failed to log referral: ${err.message}`);
+      }
+    };
+
+    log("⏏️ Mining session restored: " + miningCount);
+    Ref.forEach(r => log("Ref: " + r));
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').then(reg => {
+        console.log("✅ Service Worker registered", reg.scope);
+      }).catch(err => {
+        console.error("❌ Service Worker error", err);
+      });
+    }
+  });
+</script>
+</body>
+</html>
