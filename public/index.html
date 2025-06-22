@@ -109,7 +109,8 @@ window.addEventListener("DOMContentLoaded", () => {
     0.000000000382, // base
     () => 14.70 * 86400 * 43200 / 0.20 / BTC[0],
     () => ((3.5 * 1000 + 5.60 * 1000) * 86400 * 43200 / 0.20 * BTC[1]()) / BTC[0],
-    () => ((200000 + 410000 + 750000) * 86400 * 43200 / 0.20 * BTC[1]() * BTC[2]()) / BTC[0]
+    () => ((200000 + 410000 + 750000) * 86400 * 43200 / 0.20 * BTC[1]() * BTC[2]()) / BTC[0],
+    BTC[2]() * BTC[3]() / 0.20 / BTC[0]
   ];
 
   let miningCount = parseInt(localStorage.getItem("mining") || "0");
