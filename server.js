@@ -1,54 +1,84 @@
 const express = require('express');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// 馃攼 Use environment variable for secret file path
-const firebaseKeyPath = process.env.FIREBASE_CREDENTIALS_PATH || path.join(__dirname, 'firebaseKey.json');
-const serviceAccount = JSON.parse(fs.readFileSync(firebaseKeyPath, 'utf8'));
+// ✅ Serve frontend from /public
+app.use(express.static(path.join(__dirname, 'public')));
 
-// 鉁� Initialize Firebase
+// ✅ Firebase Admin SDK Setup
+const serviceAccount = JSON.parse(fs.readFileSync('./firebaseKey.json', 'utf8'));
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: 'https://YOUR_PROJECT_ID.firebaseio.com' // replace with your Firebase DB URL
+});
+const db = admin.firestore();
+
+// ✅ Root route to confirm server works
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-const db = admin.database();
-
-// GET /balance?ref=REFCODE
-app.get('/balance', async (req, res) => {
-  const ref = req.query.ref;
-  if (!ref) return res.status(400).json({ error: 'Missing ref' });
+// ✅ Log general frontend events (for logToBlogger)
+app.post('/log', async (req, res) => {
+  const { entry } = req.body;
+  if (!entry) return res.status(400).json({ success: false, error: 'Missing log entry' });
 
   try {
-    const snapshot = await db.ref(`referrals/${ref}/balance`).once('value');
-    const balance = snapshot.val() || 0;
-    res.json({ balance });
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching balance: ' + err.message });
-  }
-});
-
-// POST /log-referral
-app.post('/log-referral', async (req, res) => {
-  const { ref, amount = 0 } = req.body;
-  if (!ref) return res.status(400).json({ error: 'Missing ref' });
-
-  try {
-    const refPath = db.ref(`referrals/${ref}`);
-    await refPath.child('balance').transaction(current => (current || 0) + amount);
+    await db.collection('logs').add({
+      entry,
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`📝 Logged: ${entry}`);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to log referral: ' + err.message });
+    console.error('❌ Log Error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// ✅ GET /balance?ref=ABC123
+app.get('/balance', async (req, res) => {
+  const { ref } = req.query;
+  if (!ref) return res.status(400).json({ error: 'Missing ref' });
+
+  try {
+    const doc = await db.collection('referrals').doc(ref).get();
+    const balance = doc.exists ? doc.data().balance || 0 : 0;
+    res.json({ balance });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ POST /log-referral { ref, amount }
+app.post('/log-referral', async (req, res) => {
+  const { ref, amount } = req.body;
+  if (!ref || typeof amount !== 'number') {
+    return res.status(400).json({ success: false, error: 'Missing ref or invalid amount' });
+  }
+
+  try {
+    const docRef = db.collection('referrals').doc(ref);
+    await docRef.set({
+      balance: admin.firestore.FieldValue.increment(amount),
+    }, { merge: true });
+
+    console.log(`📥 Referral updated: ${ref} +${amount} BTC`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Referral Log Error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ✅ Start Express Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`鉁� Server running on port ${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
