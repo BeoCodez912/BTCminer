@@ -1,14 +1,15 @@
 {
-  "name": "btc-backend",
+  "name": "btc-miner-wallet-backend",
   "version": "1.0.0",
+  "description": "Backend for Bitcoin Miner + Wallet + Offer Wall",
   "main": "server.js",
-  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "firebase-admin": "^11.10.1",
-    "cors": "^2.8.5"
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "firebase-admin": "^11.11.1"
   }
 }
